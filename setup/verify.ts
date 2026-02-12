@@ -108,17 +108,79 @@ async function main() {
     }
   }
 
-  // 4. Services (macOS only)
+  // 4. Schedule & Documents
+  console.log(`\n${bold("  Schedule & Documents")}`);
+  existsSync(join(PROJECT_ROOT, "config", "schedule.json"))
+    ? pass("Custody schedule configured")
+    : warn("No config/schedule.json — copy config/schedule.example.json");
+
+  existsSync(join(PROJECT_ROOT, "config", "decree-summary.md"))
+    ? pass("Decree summary loaded")
+    : warn("No decree summary — run: bun run ingest:decree <path-to-pdf>");
+
+  const legalDir = join(PROJECT_ROOT, "config", "legal");
+  if (existsSync(legalDir)) {
+    const { readdirSync } = await import("fs");
+    const legalFiles = readdirSync(legalDir).filter((f: string) => f.endsWith(".md"));
+    legalFiles.length > 0
+      ? pass(`${legalFiles.length} Utah statutes cached`)
+      : warn("Legal directory empty — run: bun run fetch:legal");
+  } else {
+    warn("No Utah law cached — run: bun run fetch:legal");
+  }
+
+  // iMessage (macOS only)
+  if (process.platform === "darwin") {
+    console.log(`\n${bold("  iMessage")}`);
+    const coparentHandle = env.COPARENT_HANDLE || "";
+
+    if (!coparentHandle || coparentHandle.includes("your_")) {
+      warn("COPARENT_HANDLE not set — iMessage sync disabled");
+    } else {
+      pass(`COPARENT_HANDLE: ${coparentHandle.slice(0, 4)}...${coparentHandle.slice(-2)}`);
+
+      try {
+        const { Database } = await import("bun:sqlite");
+        const chatDbPath = join(process.env.HOME || "~", "Library/Messages/chat.db");
+        const db = new Database(chatDbPath, { readonly: true });
+
+        const rows = db
+          .query<{ cnt: number }, [string]>(
+            `SELECT COUNT(*) as cnt
+             FROM message m
+             JOIN handle h ON m.handle_id = h.ROWID
+             WHERE h.id = ?1 AND m.text IS NOT NULL`
+          )
+          .get(coparentHandle);
+
+        if (rows && rows.cnt > 0) {
+          pass(`chat.db readable — ${rows.cnt} messages found`);
+        } else {
+          warn("chat.db readable but no messages found for this handle");
+        }
+
+        db.close();
+      } catch (e: any) {
+        if (e.message?.includes("permission") || e.code === "SQLITE_CANTOPEN") {
+          fail("chat.db not accessible — grant Full Disk Access to your terminal");
+        } else {
+          fail(`chat.db error: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  // 5. Services (macOS only)
   if (process.platform === "darwin") {
     console.log(`\n${bold("  Services (launchd)")}`);
-    for (const label of ["com.claude.telegram-relay", "com.claude.smart-checkin", "com.claude.morning-briefing"]) {
+    for (const label of ["com.claude.coparent-relay", "com.claude.coparent-checkin", "com.claude.coparent-briefing", "com.claude.coparent-legal-refresh"]) {
       const proc = Bun.spawn(["launchctl", "list", label], { stdout: "pipe", stderr: "pipe" });
       const code = await proc.exited;
       code === 0 ? pass(`${label} loaded`) : warn(`${label} not loaded`);
     }
   }
 
-  // 5. Optional
+  // 6. Optional
   console.log(`\n${bold("  Optional")}`);
   env.GEMINI_API_KEY && !env.GEMINI_API_KEY.includes("your_")
     ? pass("Voice transcription (Gemini) configured")

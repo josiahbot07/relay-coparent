@@ -80,9 +80,9 @@ function generatePlist(opts: {
 
     <key>ProgramArguments</key>
     <array>
-        <string>${bunPath}</string>
-        <string>run</string>
-        <string>${opts.script}</string>
+        <string>/bin/zsh</string>
+        <string>-c</string>
+        <string>exec ${bunPath} run ${opts.script}</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -91,9 +91,11 @@ function generatePlist(opts: {
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>${HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>${HOME}/.local/bin:${HOME}/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key>
         <string>${HOME}</string>
+        <key>CLAUDE_PATH</key>
+        <string>${HOME}/.local/bin/claude</string>
     </dict>
 ${opts.keepAlive ? `
     <key>RunAtLoad</key>
@@ -126,13 +128,13 @@ interface ServiceConfig {
 
 const SERVICES: Record<string, ServiceConfig> = {
   relay: {
-    label: "com.claude.telegram-relay",
+    label: "com.claude.coparent-relay",
     script: "src/relay.ts",
     keepAlive: true,
     description: "Main bot (always running, restarts on crash)",
   },
   checkin: {
-    label: "com.claude.smart-checkin",
+    label: "com.claude.coparent-checkin",
     script: "examples/smart-checkin.ts",
     keepAlive: false,
     calendarIntervals: [
@@ -146,11 +148,25 @@ const SERVICES: Record<string, ServiceConfig> = {
     description: "Smart check-ins (runs during work hours)",
   },
   briefing: {
-    label: "com.claude.morning-briefing",
-    script: "examples/morning-briefing.ts",
+    label: "com.claude.coparent-briefing",
+    script: "src/morning-briefing.ts",
     keepAlive: false,
-    calendarIntervals: [{ Hour: 9, Minute: 0 }],
-    description: "Morning briefing (daily at 9am)",
+    calendarIntervals: [{ Hour: 6, Minute: 0 }],
+    description: "Morning briefing (daily at 6am)",
+  },
+  compact: {
+    label: "com.claude.coparent-compact",
+    script: "scripts/compact-exchanges.ts",
+    keepAlive: false,
+    calendarIntervals: [{ Hour: 2, Minute: 0 }],
+    description: "Exchange compaction (nightly at 2am)",
+  },
+  "legal-refresh": {
+    label: "com.claude.coparent-legal-refresh",
+    script: "scripts/fetch-utah-code.ts",
+    keepAlive: false,
+    calendarIntervals: [{ Hour: 3, Minute: 0 }], // 1st of month at 3am
+    description: "Utah code refresh (monthly)",
   },
 };
 
@@ -219,7 +235,7 @@ async function main() {
     const config = SERVICES[name];
     if (!config) {
       console.log(`  ${FAIL} Unknown service: ${name}`);
-      console.log(`      ${dim("Available: relay, checkin, briefing, all")}`);
+      console.log(`      ${dim("Available: relay, checkin, briefing, compact, legal-refresh, all")}`);
       allOk = false;
       continue;
     }
@@ -231,8 +247,8 @@ async function main() {
   if (allOk) {
     console.log(`  ${green("Done!")} Services are running.`);
     console.log("");
-    console.log(`  ${dim("Check status:")}  launchctl list | grep com.claude`);
-    console.log(`  ${dim("View logs:")}     tail -f ${LOGS_DIR}/com.claude.telegram-relay.log`);
+    console.log(`  ${dim("Check status:")}  launchctl list | grep com.claude.coparent`);
+    console.log(`  ${dim("View logs:")}     tail -f ${LOGS_DIR}/com.claude.coparent-relay.log`);
     console.log(`  ${dim("Stop all:")}      bun run setup/configure-launchd.ts --unload`);
   }
   console.log("");

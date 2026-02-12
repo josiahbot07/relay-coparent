@@ -11,6 +11,9 @@ bun.lockb
 # Personal config (keep examples, ignore actual)
 config/profile.md
 config/schedule.json
+config/decree-summary.md
+config/documents/
+config/legal/
 
 # Runtime files
 *.lock

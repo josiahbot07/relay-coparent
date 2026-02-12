@@ -9,6 +9,9 @@
  *
  * The relay parses these tags, saves to Supabase, and strips them
  * from the response before sending to the user.
+ *
+ * Co-parenting addition:
+ *   [AGREEMENT: description of what was agreed upon]
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -46,6 +49,15 @@ export async function processMemoryIntents(
     clean = clean.replace(match[0], "");
   }
 
+  // [AGREEMENT: description of what was agreed upon]
+  for (const match of response.matchAll(/\[AGREEMENT:\s*(.+?)\]/gi)) {
+    await supabase.from("memory").insert({
+      type: "agreement",
+      content: match[1],
+    });
+    clean = clean.replace(match[0], "");
+  }
+
   // [DONE: search text for completed goal]
   for (const match of response.matchAll(/\[DONE:\s*(.+?)\]/gi)) {
     const { data } = await supabase
@@ -71,7 +83,24 @@ export async function processMemoryIntents(
 }
 
 /**
- * Get all facts and active goals for prompt context.
+ * Get all recorded co-parenting agreements.
+ */
+export async function getAgreements(
+  supabase: SupabaseClient | null
+): Promise<{ id: string; content: string; created_at: string }[]> {
+  if (!supabase) return [];
+
+  try {
+    const { data, error } = await supabase.rpc("get_agreements");
+    if (error || !data) return [];
+    return data;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get all facts, active goals, and agreements for prompt context.
  */
 export async function getMemoryContext(
   supabase: SupabaseClient | null
@@ -79,9 +108,10 @@ export async function getMemoryContext(
   if (!supabase) return "";
 
   try {
-    const [factsResult, goalsResult] = await Promise.all([
+    const [factsResult, goalsResult, agreements] = await Promise.all([
       supabase.rpc("get_facts"),
       supabase.rpc("get_active_goals"),
+      getAgreements(supabase),
     ]);
 
     const parts: string[] = [];
@@ -107,6 +137,15 @@ export async function getMemoryContext(
       );
     }
 
+    if (agreements.length) {
+      parts.push(
+        "CO-PARENTING AGREEMENTS:\n" +
+          agreements
+            .map((a) => `- ${a.content} (${new Date(a.created_at).toLocaleDateString()})`)
+            .join("\n")
+      );
+    }
+
     return parts.join("\n\n");
   } catch (error) {
     console.error("Memory context error:", error);
@@ -115,7 +154,8 @@ export async function getMemoryContext(
 }
 
 /**
- * Semantic search for relevant past messages via the search Edge Function.
+ * Semantic search for relevant past messages and memory entries via the
+ * search Edge Function. Searches both tables in parallel.
  * The Edge Function handles embedding generation (OpenAI key stays in Supabase).
  */
 export async function getRelevantContext(
@@ -125,18 +165,75 @@ export async function getRelevantContext(
   if (!supabase) return "";
 
   try {
-    const { data, error } = await supabase.functions.invoke("search", {
-      body: { query, match_count: 5, table: "messages" },
-    });
+    const [msgResult, memResult, exchResult] = await Promise.all([
+      supabase.functions.invoke("search", {
+        body: { query, match_count: 5, table: "messages" },
+      }),
+      supabase.functions.invoke("search", {
+        body: { query, match_count: 3, table: "memory" },
+      }),
+      supabase.functions.invoke("search", {
+        body: { query, match_count: 3, table: "daily_transcripts" },
+      }),
+    ]);
 
-    if (error || !data?.length) return "";
+    const parts: string[] = [];
 
-    return (
-      "RELEVANT PAST MESSAGES:\n" +
-      data
-        .map((m: any) => `[${m.role}]: ${m.content}`)
-        .join("\n")
-    );
+    // Past messages — use sender if available, fall back to role
+    if (!msgResult.error && msgResult.data?.length) {
+      parts.push(
+        "RELEVANT PAST MESSAGES:\n" +
+          msgResult.data.map((m: any) => `[${m.sender || m.role}]: ${m.content}`).join("\n")
+      );
+    }
+
+    // Daily transcript results (compacted iMessage exchanges)
+    if (!exchResult.error && exchResult.data?.length) {
+      parts.push(
+        "RELEVANT PAST EXCHANGES (iMessage):\n" +
+          exchResult.data.map((e: any) => `--- ${e.date} (${e.message_count} messages) ---\n${e.transcript}`).join("\n\n")
+      );
+    }
+
+    // Memory entries — format by type
+    if (!memResult.error && memResult.data?.length) {
+      const decree = memResult.data.filter((m: any) => m.type === "decree");
+      const legal = memResult.data.filter((m: any) => m.type === "legal");
+      const reference = memResult.data.filter((m: any) => m.type === "reference");
+      const other = memResult.data.filter(
+        (m: any) => m.type !== "decree" && m.type !== "legal" && m.type !== "reference"
+      );
+
+      if (decree.length) {
+        parts.push(
+          "RELEVANT DECREE SECTIONS:\n" +
+            decree.map((m: any) => m.content).join("\n---\n")
+        );
+      }
+
+      if (legal.length) {
+        parts.push(
+          "RELEVANT UTAH LAW:\n" +
+            legal.map((m: any) => m.content).join("\n---\n")
+        );
+      }
+
+      if (reference.length) {
+        parts.push(
+          "RELEVANT REFERENCE MATERIAL:\n" +
+            reference.map((m: any) => m.content).join("\n---\n")
+        );
+      }
+
+      if (other.length) {
+        parts.push(
+          "RELEVANT MEMORY:\n" +
+            other.map((m: any) => `[${m.type}]: ${m.content}`).join("\n")
+        );
+      }
+    }
+
+    return parts.join("\n\n");
   } catch {
     // Search not available yet (Edge Functions not deployed) — that's fine
     return "";

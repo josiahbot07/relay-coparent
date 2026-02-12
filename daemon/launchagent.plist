@@ -4,7 +4,7 @@
 <dict>
     <!-- Unique identifier for this service -->
     <key>Label</key>
-    <string>com.claude.telegram-relay</string>
+    <string>com.claude.coparent-relay</string>
 
     <!-- Command to run -->
     <key>ProgramArguments</key>
@@ -60,12 +60,12 @@ SETUP INSTRUCTIONS:
 1. Replace all YOUR_USERNAME with your actual macOS username
 
 2. Copy to LaunchAgents:
-   cp daemon/launchagent.plist ~/Library/LaunchAgents/com.claude.telegram-relay.plist
+   cp daemon/launchagent.plist ~/Library/LaunchAgents/com.claude.coparent-relay.plist
 
 3. Make sure your .env file exists in the relay directory
 
 4. Load the agent:
-   launchctl load ~/Library/LaunchAgents/com.claude.telegram-relay.plist
+   launchctl load ~/Library/LaunchAgents/com.claude.coparent-relay.plist
 
 5. Check if running:
    launchctl list | grep claude
@@ -74,9 +74,9 @@ SETUP INSTRUCTIONS:
    tail -f ~/Library/Logs/claude-telegram-relay.log
 
 7. To stop:
-   launchctl unload ~/Library/LaunchAgents/com.claude.telegram-relay.plist
+   launchctl unload ~/Library/LaunchAgents/com.claude.coparent-relay.plist
 
 8. To restart:
-   launchctl unload ~/Library/LaunchAgents/com.claude.telegram-relay.plist
-   launchctl load ~/Library/LaunchAgents/com.claude.telegram-relay.plist
+   launchctl unload ~/Library/LaunchAgents/com.claude.coparent-relay.plist
+   launchctl load ~/Library/LaunchAgents/com.claude.coparent-relay.plist
 -->

@@ -1,0 +1,33 @@
+{
+  "weekdayOvernight": {
+    "parent": "user",
+    "pickupDay": "wednesday",
+    "dropoffDay": "thursday"
+  },
+  "alternatingWeekends": {
+    "referenceDate": "2026-02-13",
+    "pickupDay": "friday",
+    "pickupTime": "18:00",
+    "dropoffDay": "monday",
+    "dropoffTime": "19:00"
+  },
+  "holidays": {
+    "evenYearUser": [
+      "Presidents Day",
+      "Memorial Day",
+      "Pioneer Day",
+      "Thanksgiving",
+      "Christmas 2nd half"
+    ],
+    "oddYearUser": [
+      "MLK Day",
+      "Spring Break",
+      "July 4th",
+      "Labor Day",
+      "Fall Break",
+      "Christmas 1st half"
+    ],
+    "alwaysUser": ["Father's Day"],
+    "alwaysCoparent": ["Mother's Day"]
+  }
+}

@@ -185,14 +185,14 @@ main();
 // LAUNCHD PLIST FOR SCHEDULING (macOS)
 // ============================================================
 /*
-Save this as ~/Library/LaunchAgents/com.claude.morning-briefing.plist:
+Save this as ~/Library/LaunchAgents/com.claude.coparent-briefing.plist:
 
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.claude.morning-briefing</string>
+    <string>com.claude.coparent-briefing</string>
     <key>ProgramArguments</key>
     <array>
         <string>/Users/YOUR_USERNAME/.bun/bin/bun</string>
@@ -215,7 +215,7 @@ Save this as ~/Library/LaunchAgents/com.claude.morning-briefing.plist:
 </dict>
 </plist>
 
-Load with: launchctl load ~/Library/LaunchAgents/com.claude.morning-briefing.plist
+Load with: launchctl load ~/Library/LaunchAgents/com.claude.coparent-briefing.plist
 */
 
 // ============================================================

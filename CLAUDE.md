@@ -1,17 +1,21 @@
-# Claude Telegram Relay — Setup Guide
+# Co-Parenting Communication Assistant — Setup Guide
 
 > Claude Code reads this file automatically. Walk the user through setup one phase at a time.
 > Ask for what you need, configure everything yourself, and confirm each step works before moving on.
 
 ## How This Works
 
-This project turns Telegram into a personal AI assistant powered by Claude.
+This project turns Telegram into a co-parenting communication assistant powered by Claude. It monitors iMessage conversations with your co-parent, notifies you via Telegram when new messages arrive, and helps you craft civil, child-focused responses. All exchanges are stored in Supabase for documentation.
 
 The user cloned this repo (or gave you the link). Your job: guide them through setup conversationally. Ask questions, save their answers to `.env`, test each step, move on.
 
 Do not dump all phases at once. Start with Phase 1. When it works, move to Phase 2. Let the user control the pace.
 
 If this is a fresh clone, run `bun run setup` first to install dependencies and create `.env`.
+
+## Project Preferences
+
+- **Always choose the free option.** Never suggest features, services, or API calls that cost money — even small amounts. If a feature requires a paid API (e.g., OpenAI embeddings), skip it or find a free alternative. The user is on Supabase free tier and wants to stay at $0.
 
 ---
 
@@ -112,21 +116,44 @@ Run `bun run test:supabase` to confirm:
 
 ---
 
-## Phase 3: Personalize (~3 min)
+## Phase 3: Personalize (~5 min)
 
 **Ask the user:**
 - Their first name
 - Their timezone (e.g., America/New_York, Europe/Berlin)
-- What they do for work (one sentence)
-- Any time constraints (e.g., "I pick up my kid at 3pm on weekdays")
-- How they like to be communicated with (brief/detailed, casual/formal)
+- Their co-parent's first name
+- Their co-parent's phone number or iMessage ID (e.g., +15551234567)
+- Children's names and ages
+- Custody schedule overview (e.g., "50/50 week-on/week-off")
+- Topics that tend to escalate (e.g., money, schedule changes)
+- How they like suggested responses (businesslike, warm, neutral)
 
 **What you do:**
-1. Save `USER_NAME` and `USER_TIMEZONE` to `.env`
+1. Save `USER_NAME`, `USER_TIMEZONE`, `COPARENT_HANDLE`, and `COPARENT_NAME` to `.env`
 2. Copy `config/profile.example.md` to `config/profile.md`
 3. Fill in `config/profile.md` with their answers — the bot loads this on every message
 
 **Done when:** `config/profile.md` exists with their details.
+
+---
+
+## Phase 3.5: iMessage Setup (macOS only, ~3 min)
+
+The bot reads your iMessage database to track co-parent conversations automatically.
+
+**What to tell the user:**
+1. macOS stores iMessages in `~/Library/Messages/chat.db`
+2. The terminal app running the bot needs **Full Disk Access** to read it
+3. Go to: System Settings > Privacy & Security > Full Disk Access
+4. Add their terminal app (Terminal, iTerm2, Warp, etc.) and toggle it on
+5. Restart the terminal after granting access
+
+**What you do:**
+1. Verify `COPARENT_HANDLE` is set in `.env` (should be done in Phase 3)
+2. Test database access: try opening `~/Library/Messages/chat.db` — if it fails, remind user about Full Disk Access
+3. The iMessage sync starts automatically when the bot runs (`bun run start`)
+
+**Done when:** Full Disk Access is granted and `COPARENT_HANDLE` is configured.
 
 ---
 
@@ -135,16 +162,19 @@ Run `bun run test:supabase` to confirm:
 **What you do:**
 1. Run `bun run start`
 2. Tell the user to open Telegram and send a test message to their bot
-3. Wait for confirmation it responded
-4. Press Ctrl+C to stop
+3. The bot should respond as a co-parenting communication coach
+4. If `COPARENT_HANDLE` is set, iMessage sync should start (check console for "iMessage sync started")
+5. Press Ctrl+C to stop
 
 **Troubleshooting if it fails:**
 - Wrong bot token → re-check with BotFather
 - Wrong user ID → re-check with @userinfobot
 - Claude CLI not found → `npm install -g @anthropic-ai/claude-code`
 - Bun not installed → `curl -fsSL https://bun.sh/install | bash`
+- iMessage database error → grant Full Disk Access to the terminal app
+- No iMessage notifications → verify `COPARENT_HANDLE` matches the contact's phone/email exactly
 
-**Done when:** User confirms their bot responded on Telegram.
+**Done when:** User confirms their bot responded on Telegram and iMessage sync is running.
 
 ---
 

@@ -1,0 +1,36 @@
+{
+  "school": {
+    "name": "Your Child's School",
+    "shortName": "XYZ",
+    "year": "2025-2026",
+    "child": "Child Name"
+  },
+  "schedule": {
+    "regularStart": "08:00",
+    "regularEnd": "15:00",
+    "earlyOutStart": "08:00",
+    "earlyOutEnd": "12:00",
+    "earlyOutDays": ["friday"]
+  },
+  "terms": [
+    { "name": "Term 1", "start": "2025-08-25", "end": "2025-10-17" },
+    { "name": "Term 2", "start": "2025-10-20", "end": "2026-01-16" },
+    { "name": "Term 3", "start": "2026-01-20", "end": "2026-03-27" },
+    { "name": "Term 4", "start": "2026-03-30", "end": "2026-06-05" }
+  ],
+  "events": [
+    { "date": "2025-09-01", "type": "no_school", "name": "Labor Day" },
+    { "date": "2025-10-13", "endDate": "2025-10-17", "type": "no_school", "name": "Fall Break" },
+    { "date": "2025-11-27", "endDate": "2025-11-28", "type": "no_school", "name": "Thanksgiving Recess" },
+    { "date": "2025-12-22", "endDate": "2026-01-02", "type": "no_school", "name": "Winter Recess" },
+    { "date": "2026-01-19", "type": "no_school", "name": "Martin Luther King Jr. Day" },
+    { "date": "2026-02-16", "type": "no_school", "name": "Presidents' Day" },
+    { "date": "2026-04-06", "endDate": "2026-04-10", "type": "no_school", "name": "Spring Break" },
+    { "date": "2026-05-25", "type": "no_school", "name": "Memorial Day" },
+
+    { "date": "2025-10-15", "endDate": "2025-10-16", "type": "early_release", "name": "Parent-Teacher Conferences" },
+
+    { "date": "2025-08-25", "type": "milestone", "name": "First Day of School" },
+    { "date": "2026-06-05", "type": "milestone", "name": "Last Day of School" }
+  ]
+}

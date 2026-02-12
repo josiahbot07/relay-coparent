@@ -207,14 +207,14 @@ Run every 30 minutes:
 CRON (Linux):
 */30 * * * * cd /path/to/relay && bun run examples/smart-checkin.ts
 
-LAUNCHD (macOS) - save as ~/Library/LaunchAgents/com.claude.smart-checkin.plist:
+LAUNCHD (macOS) - save as ~/Library/LaunchAgents/com.claude.coparent-checkin.plist:
 
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "...">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.claude.smart-checkin</string>
+    <string>com.claude.coparent-checkin</string>
     <key>ProgramArguments</key>
     <array>
         <string>/Users/YOU/.bun/bin/bun</string>

@@ -1,0 +1,50 @@
+{
+  "school": {
+    "name": "Wallace Stegner Academies",
+    "shortName": "WSA",
+    "year": "2025-2026",
+    "child": "Via"
+  },
+  "schedule": {
+    "regularStart": "08:30",
+    "regularEnd": "15:30",
+    "earlyOutStart": "08:30",
+    "earlyOutEnd": "13:30",
+    "earlyOutDays": ["friday"]
+  },
+  "terms": [
+    { "name": "Term 1", "start": "2025-08-18", "end": "2025-10-03" },
+    { "name": "Term 2", "start": "2025-10-06", "end": "2026-01-09" },
+    { "name": "Term 3", "start": "2026-01-12", "end": "2026-03-27" },
+    { "name": "Term 4", "start": "2026-03-30", "end": "2026-06-02" }
+  ],
+  "events": [
+    { "date": "2025-09-01", "type": "no_school", "name": "Labor Day" },
+    { "date": "2026-01-19", "type": "no_school", "name": "Martin Luther King Jr. Day" },
+    { "date": "2026-02-16", "type": "no_school", "name": "Presidents' Day" },
+    { "date": "2026-05-25", "type": "no_school", "name": "Memorial Day" },
+
+    { "date": "2025-10-03", "type": "no_school", "name": "Professional Development" },
+    { "date": "2026-01-09", "type": "no_school", "name": "Professional Development" },
+    { "date": "2026-02-13", "type": "no_school", "name": "Professional Development" },
+    { "date": "2026-03-27", "type": "no_school", "name": "Professional Development" },
+
+    { "date": "2025-10-10", "type": "no_school", "name": "Teacher Compensation Day" },
+    { "date": "2026-01-16", "type": "no_school", "name": "Teacher Compensation Day" },
+    { "date": "2026-04-03", "type": "no_school", "name": "Teacher Compensation Day" },
+
+    { "date": "2025-10-13", "endDate": "2025-10-17", "type": "no_school", "name": "Fall Break" },
+    { "date": "2025-11-26", "endDate": "2025-11-28", "type": "no_school", "name": "Thanksgiving Recess" },
+    { "date": "2025-12-22", "endDate": "2026-01-02", "type": "no_school", "name": "Winter Recess" },
+    { "date": "2026-04-06", "endDate": "2026-04-10", "type": "no_school", "name": "Spring Break" },
+
+    { "date": "2025-08-18", "endDate": "2025-08-22", "type": "early_release", "name": "First Week of School" },
+    { "date": "2025-10-08", "endDate": "2025-10-09", "type": "early_release", "name": "Fall Parent-Teacher Conferences" },
+    { "date": "2026-01-14", "endDate": "2026-01-15", "type": "early_release", "name": "Winter Parent-Teacher Conferences" },
+    { "date": "2026-04-01", "endDate": "2026-04-02", "type": "early_release", "name": "Spring Parent-Teacher Conferences" },
+    { "date": "2026-05-28", "endDate": "2026-06-02", "type": "early_release", "name": "Last Week of School" },
+
+    { "date": "2025-08-18", "type": "milestone", "name": "First Day of School" },
+    { "date": "2026-06-02", "type": "milestone", "name": "Last Day of School" }
+  ]
+}

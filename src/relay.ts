@@ -18,6 +18,8 @@ import {
   getMemoryContext,
   getRelevantContext,
 } from "./memory.ts";
+import { startIMessageSync, getRecentExchanges } from "./imessage.ts";
+import { getScheduleContext } from "./schedule.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -29,7 +31,7 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const ALLOWED_USER_ID = process.env.TELEGRAM_USER_ID || "";
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const PROJECT_DIR = process.env.PROJECT_DIR || "";
-const RELAY_DIR = process.env.RELAY_DIR || join(process.env.HOME || "~", ".claude-relay");
+const RELAY_DIR = process.env.RELAY_DIR || join(process.env.HOME || "~", ".coparent-relay");
 
 // Directories
 const TEMP_DIR = join(RELAY_DIR, "temp");
@@ -143,12 +145,15 @@ async function saveMessage(
 ): Promise<void> {
   if (!supabase) return;
   try {
-    await supabase.from("messages").insert({
+    const sender = role === "user" ? (USER_NAME || "user") : "bot";
+    const { error } = await supabase.from("messages").insert({
       role,
       content,
       channel: "telegram",
+      sender,
       metadata: metadata || {},
     });
+    if (error) console.error("Supabase save error:", error.message, error.details);
   } catch (error) {
     console.error("Supabase save error:", error);
   }
@@ -247,13 +252,14 @@ bot.on("message:text", async (ctx) => {
 
   await saveMessage("user", text);
 
-  // Gather context: semantic search + facts/goals
-  const [relevantContext, memoryContext] = await Promise.all([
+  // Gather context: semantic search + facts/goals + co-parent exchanges
+  const [relevantContext, memoryContext, exchangeContext] = await Promise.all([
     getRelevantContext(supabase, text),
     getMemoryContext(supabase),
+    getRecentExchanges(supabase),
   ]);
 
-  const enrichedPrompt = buildPrompt(text, relevantContext, memoryContext);
+  const enrichedPrompt = buildPrompt(text, relevantContext, memoryContext, exchangeContext);
   const rawResponse = await callClaude(enrichedPrompt, { resume: true });
 
   // Parse and save any memory intents, strip tags from response
@@ -291,15 +297,17 @@ bot.on("message:voice", async (ctx) => {
 
     await saveMessage("user", `[Voice ${voice.duration}s]: ${transcription}`);
 
-    const [relevantContext, memoryContext] = await Promise.all([
+    const [relevantContext, memoryContext, exchangeContext] = await Promise.all([
       getRelevantContext(supabase, transcription),
       getMemoryContext(supabase),
+      getRecentExchanges(supabase),
     ]);
 
     const enrichedPrompt = buildPrompt(
       `[Voice message transcribed]: ${transcription}`,
       relevantContext,
-      memoryContext
+      memoryContext,
+      exchangeContext
     );
     const rawResponse = await callClaude(enrichedPrompt, { resume: true });
     const claudeResponse = await processMemoryIntents(supabase, rawResponse);
@@ -393,7 +401,7 @@ bot.on("message:document", async (ctx) => {
 // HELPERS
 // ============================================================
 
-// Load profile once at startup
+// Load profile and decree summary once at startup
 let profileContext = "";
 try {
   profileContext = await readFile(join(PROJECT_ROOT, "config", "profile.md"), "utf-8");
@@ -401,13 +409,22 @@ try {
   // No profile yet — that's fine
 }
 
+let decreeSummary = "";
+try {
+  decreeSummary = await readFile(join(PROJECT_ROOT, "config", "decree-summary.md"), "utf-8");
+} catch {
+  // No decree summary yet — that's fine
+}
+
 const USER_NAME = process.env.USER_NAME || "";
 const USER_TIMEZONE = process.env.USER_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone;
+const COPARENT_NAME = process.env.COPARENT_NAME || "Co-parent";
 
 function buildPrompt(
   userMessage: string,
   relevantContext?: string,
-  memoryContext?: string
+  memoryContext?: string,
+  exchangeContext?: string
 ): string {
   const now = new Date();
   const timeStr = now.toLocaleString("en-US", {
@@ -421,24 +438,42 @@ function buildPrompt(
   });
 
   const parts = [
-    "You are a personal AI assistant responding via Telegram. Keep responses concise and conversational.",
+    "You are a co-parenting communication coach responding via Telegram." +
+      ` You help ${USER_NAME || "the user"} communicate effectively with their co-parent, ${COPARENT_NAME}.` +
+      "\n\nYour principles:" +
+      "\n- Keep suggested responses brief, businesslike, and child-focused" +
+      "\n- Never escalate, blame, or use sarcasm" +
+      "\n- Remove emotional language — stick to logistics and the children's needs" +
+      "\n- Flag any agreements or schedule changes worth documenting" +
+      "\n- When the user shares a message from their co-parent, suggest a civil response they can send" +
+      "\n- You can also answer general co-parenting questions and offer emotional support" +
+      "\n- Keep your own messages concise and conversational",
   ];
 
   if (USER_NAME) parts.push(`You are speaking with ${USER_NAME}.`);
   parts.push(`Current time: ${timeStr}`);
   if (profileContext) parts.push(`\nProfile:\n${profileContext}`);
+  if (decreeSummary) parts.push(`\nDIVORCE DECREE KEY PROVISIONS:\n${decreeSummary}`);
+
+  // Add custody schedule context
+  const scheduleCtx = getScheduleContext();
+  if (scheduleCtx) parts.push(`\n${scheduleCtx}`);
+
   if (memoryContext) parts.push(`\n${memoryContext}`);
   if (relevantContext) parts.push(`\n${relevantContext}`);
 
   parts.push(
     "\nMEMORY MANAGEMENT:" +
-      "\nWhen the user shares something worth remembering, sets goals, or completes goals, " +
+      "\nWhen the user shares something worth remembering, sets goals, completes goals, " +
+      "or when a co-parenting agreement is made, " +
       "include these tags in your response (they are processed automatically and hidden from the user):" +
       "\n[REMEMBER: fact to store]" +
       "\n[GOAL: goal text | DEADLINE: optional date]" +
-      "\n[DONE: search text for completed goal]"
+      "\n[DONE: search text for completed goal]" +
+      "\n[AGREEMENT: description of what was agreed upon]"
   );
 
+  if (exchangeContext) parts.push(`\n${exchangeContext}`);
   parts.push(`\nUser: ${userMessage}`);
 
   return parts.join("\n");
@@ -449,7 +484,11 @@ async function sendResponse(ctx: Context, response: string): Promise<void> {
   const MAX_LENGTH = 4000;
 
   if (response.length <= MAX_LENGTH) {
-    await ctx.reply(response);
+    try {
+      await ctx.reply(response, { parse_mode: "Markdown" });
+    } catch {
+      await ctx.reply(response);
+    }
     return;
   }
 
@@ -474,7 +513,11 @@ async function sendResponse(ctx: Context, response: string): Promise<void> {
   }
 
   for (const chunk of chunks) {
-    await ctx.reply(chunk);
+    try {
+      await ctx.reply(chunk, { parse_mode: "Markdown" });
+    } catch {
+      await ctx.reply(chunk);
+    }
   }
 }
 
@@ -486,8 +529,25 @@ console.log("Starting Claude Telegram Relay...");
 console.log(`Authorized user: ${ALLOWED_USER_ID || "ANY (not recommended)"}`);
 console.log(`Project directory: ${PROJECT_DIR || "(relay working directory)"}`);
 
+// Helper to send a notification to the user's Telegram chat
+async function sendTelegramNotification(text: string): Promise<void> {
+  if (!ALLOWED_USER_ID) return;
+  try {
+    await bot.api.sendMessage(ALLOWED_USER_ID, text, { parse_mode: "Markdown" });
+  } catch {
+    try {
+      await bot.api.sendMessage(ALLOWED_USER_ID, text);
+    } catch (error) {
+      console.error("Telegram notification error:", error);
+    }
+  }
+}
+
 bot.start({
   onStart: () => {
     console.log("Bot is running!");
+
+    // Start iMessage sync after bot is ready
+    startIMessageSync(supabase, sendTelegramNotification);
   },
 });
