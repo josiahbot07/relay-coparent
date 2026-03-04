@@ -32,6 +32,8 @@ const ALLOWED_USER_ID = process.env.TELEGRAM_USER_ID || "";
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const PROJECT_DIR = process.env.PROJECT_DIR || "";
 const RELAY_DIR = process.env.RELAY_DIR || join(process.env.HOME || "~", ".coparent-relay");
+const GROUP_CHAT_ID = process.env.TELEGRAM_GROUP_CHAT_ID || "";
+const OBSERVER_USER_ID = process.env.OBSERVER_USER_ID || "";
 
 // Directories
 const TEMP_DIR = join(RELAY_DIR, "temp");
@@ -173,9 +175,24 @@ const bot = new Bot(BOT_TOKEN);
 
 bot.use(async (ctx, next) => {
   const userId = ctx.from?.id.toString();
+  const chatId = ctx.chat?.id.toString();
+  const isGroup = ctx.chat?.type === "group" || ctx.chat?.type === "supergroup";
 
-  // If ALLOWED_USER_ID is set, enforce it
-  if (ALLOWED_USER_ID && userId !== ALLOWED_USER_ID) {
+  // Group chat handling
+  if (isGroup) {
+    // Only allow the configured group
+    if (GROUP_CHAT_ID && chatId !== GROUP_CHAT_ID) return;
+    // In group, allow primary user and observer only
+    const isAuthorized =
+      userId === ALLOWED_USER_ID ||
+      (OBSERVER_USER_ID && userId === OBSERVER_USER_ID);
+    if (!isAuthorized) return; // silently ignore
+    await next();
+    return;
+  }
+
+  // Private chat — allow primary user and observer
+  if (ALLOWED_USER_ID && userId !== ALLOWED_USER_ID && userId !== OBSERVER_USER_ID) {
     console.log(`Unauthorized: ${userId}`);
     await ctx.reply("This bot is private.");
     return;
@@ -192,25 +209,23 @@ async function callClaude(
   prompt: string,
   options?: { resume?: boolean; imagePath?: string }
 ): Promise<string> {
-  const args = [CLAUDE_PATH, "-p", prompt];
+  const args = [CLAUDE_PATH, "-p", "--output-format", "text"];
 
   // Resume previous session if available and requested
   if (options?.resume && session.sessionId) {
     args.push("--resume", session.sessionId);
   }
 
-  args.push("--output-format", "text");
-
   console.log(`Calling Claude: ${prompt.substring(0, 50)}...`);
 
   try {
     const proc = spawn(args, {
+      stdin: new Blob([prompt]),
       stdout: "pipe",
       stderr: "pipe",
       cwd: PROJECT_DIR || undefined,
       env: {
         ...process.env,
-        // Pass through any env vars Claude might need
       },
     });
 
@@ -543,11 +558,38 @@ async function sendTelegramNotification(text: string): Promise<void> {
   }
 }
 
+// Helper to send a notification to the group chat
+async function sendGroupNotification(text: string): Promise<void> {
+  if (!GROUP_CHAT_ID) return;
+  try {
+    await bot.api.sendMessage(GROUP_CHAT_ID, text, { parse_mode: "Markdown" });
+  } catch {
+    try {
+      await bot.api.sendMessage(GROUP_CHAT_ID, text);
+    } catch (error) {
+      console.error("Group notification error:", error);
+    }
+  }
+}
+
+// iMessage routing: incoming → private + group, outgoing → group only
+async function routeIMessage(text: string, direction: "incoming" | "outgoing"): Promise<void> {
+  if (direction === "incoming") {
+    await sendTelegramNotification(text);
+    await sendGroupNotification(text);
+  } else {
+    // Outgoing — Siosaia already sees it in iMessage, just send to group
+    await sendGroupNotification(text);
+  }
+}
+
 bot.start({
   onStart: () => {
     console.log("Bot is running!");
+    if (GROUP_CHAT_ID) console.log(`Group chat: ${GROUP_CHAT_ID}`);
+    if (OBSERVER_USER_ID) console.log(`Observer: ${OBSERVER_USER_ID}`);
 
     // Start iMessage sync after bot is ready
-    startIMessageSync(supabase, sendTelegramNotification);
+    startIMessageSync(supabase, routeIMessage);
   },
 });

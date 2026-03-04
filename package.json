@@ -16,7 +16,10 @@
     "ingest:decree": "bun run scripts/ingest-decree.ts",
     "fetch:legal": "bun run scripts/fetch-utah-code.ts",
     "briefing": "bun run src/morning-briefing.ts",
-    "compact": "bun run scripts/compact-exchanges.ts"
+    "compact": "bun run scripts/compact-exchanges.ts",
+    "stop": "launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.claude.coparent-relay.plist",
+    "start:service": "launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.claude.coparent-relay.plist",
+    "restart": "bun run stop; bun run start:service"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

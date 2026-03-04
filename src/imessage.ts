@@ -97,9 +97,60 @@ function appleTimestampToUnix(appleNs: number): number {
   return appleNs / 1_000_000_000 + APPLE_EPOCH_OFFSET;
 }
 
+/**
+ * Extract plain text from an NSAttributedString typedstream blob.
+ * macOS iMessage stores many messages only in the `attributedBody` column
+ * (a serialized NSKeyedArchiver/typedstream) rather than the `text` column.
+ */
+function extractTextFromAttributedBody(
+  blob: Buffer | Uint8Array | null | undefined
+): string | null {
+  if (!blob || blob.length === 0) return null;
+
+  try {
+    const buf = Buffer.isBuffer(blob) ? blob : Buffer.from(blob);
+
+    // Find the NSString marker — the text follows shortly after
+    const nsStringMarker = Buffer.from("NSString");
+    let idx = buf.indexOf(nsStringMarker);
+    if (idx === -1) return null;
+
+    // After NSString, look for the \x01+ pattern that precedes the text length
+    idx = idx + nsStringMarker.length;
+    const plusMarker = buf.indexOf(Buffer.from([0x01, 0x2b]), idx);
+    if (plusMarker === -1) return null;
+
+    // Length byte(s) follow the marker
+    let pos = plusMarker + 2;
+    if (pos >= buf.length) return null;
+
+    let textLength = buf[pos];
+    pos++;
+
+    // If high bit is set, length is encoded as multi-byte little-endian
+    if (textLength & 0x80) {
+      const numBytes = textLength & 0x7f;
+      if (numBytes === 0 || pos + numBytes > buf.length) return null;
+      textLength = 0;
+      for (let i = 0; i < numBytes; i++) {
+        textLength |= buf[pos + i] << (8 * i);
+      }
+      pos += numBytes;
+    }
+
+    if (textLength === 0 || pos + textLength > buf.length) return null;
+
+    const text = buf.subarray(pos, pos + textLength).toString("utf-8");
+    return text.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 interface IMessageRow {
   ROWID: number;
   text: string | null;
+  attributedBody: Buffer | null;
   is_from_me: number;
   date: number;
   handle_id: string;
@@ -111,7 +162,7 @@ interface IMessageRow {
  */
 export function startIMessageSync(
   supabase: SupabaseClient | null,
-  sendTelegram: (text: string) => Promise<void>
+  sendTelegram: (text: string, direction: "incoming" | "outgoing") => Promise<void>
 ): void {
   if (!COPARENT_HANDLE) {
     console.log(
@@ -134,6 +185,7 @@ export function startIMessageSync(
     SELECT
       m.ROWID,
       m.text,
+      m.attributedBody,
       m.is_from_me,
       m.date,
       h.id AS handle_id
@@ -156,7 +208,8 @@ export function startIMessageSync(
       let newLastRowId = cursor.lastRowId;
 
       for (const row of rows) {
-        if (!row.text) continue; // skip non-text messages (tapbacks, etc.)
+        const text = row.text ?? extractTextFromAttributedBody(row.attributedBody);
+        if (!text) continue; // skip non-text messages (tapbacks, etc.)
 
         const unixTimestamp = appleTimestampToUnix(row.date);
         const timestamp = new Date(unixTimestamp * 1000).toISOString();
@@ -166,7 +219,7 @@ export function startIMessageSync(
         if (supabase) {
           const { error } = await supabase.from("exchanges").insert({
             sender: row.is_from_me ? USER_NAME : COPARENT_NAME,
-            content: row.text,
+            content: text,
             original_timestamp: timestamp,
             metadata: {
               source: "imessage",
@@ -179,7 +232,7 @@ export function startIMessageSync(
 
         // Always push to in-memory buffer (works even without Supabase)
         recentMessageBuffer.push({
-          content: row.text,
+          content: text,
           direction,
           timestamp,
         });
@@ -187,11 +240,11 @@ export function startIMessageSync(
           recentMessageBuffer.shift();
         }
 
-        // Notify on Telegram for incoming messages only
-        if (!row.is_from_me) {
-          await sendTelegram(
-            `${COPARENT_NAME}: ${row.text}`
-          );
+        // Notify on Telegram — both directions with labels
+        if (row.is_from_me) {
+          await sendTelegram(`${USER_NAME}: ${text}`, "outgoing");
+        } else {
+          await sendTelegram(`${COPARENT_NAME}: ${text}`, "incoming");
         }
 
         newLastRowId = Math.max(newLastRowId, row.ROWID);
@@ -248,14 +301,14 @@ export async function getRecentExchanges(
     try {
       const rows = db
         .query<
-          { text: string; is_from_me: number; date: number },
+          { text: string | null; attributedBody: Buffer | null; is_from_me: number; date: number },
           [string, number]
         >(
-          `SELECT m.text, m.is_from_me, m.date
+          `SELECT m.text, m.attributedBody, m.is_from_me, m.date
            FROM message m
            JOIN handle h ON m.handle_id = h.ROWID
            WHERE h.id = ?1
-             AND m.text IS NOT NULL
+             AND (m.text IS NOT NULL OR m.attributedBody IS NOT NULL)
            ORDER BY m.date DESC
            LIMIT ?2`
         )
@@ -266,8 +319,10 @@ export async function getRecentExchanges(
           .reverse() // chronological order
           .map((row) => {
             const who = row.is_from_me ? USER_NAME : COPARENT_NAME;
-            return `${who}: ${row.text}`;
+            const content = row.text ?? extractTextFromAttributedBody(row.attributedBody);
+            return content ? `${who}: ${content}` : null;
           })
+          .filter(Boolean)
           .join("\n");
 
         console.log(
