@@ -8,7 +8,7 @@
  * Run standalone for a quick status check: bun run src/schedule.ts
  */
 
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, readdirSync } from "fs";
 import { join, dirname } from "path";
 
 const PROJECT_ROOT = dirname(import.meta.dir);
@@ -89,6 +89,7 @@ export interface SchoolEvent {
   endDate?: Date;
   type: "no_school" | "early_release" | "milestone";
   daysUntil: number;
+  child?: string;
 }
 
 // ============================================================
@@ -204,7 +205,7 @@ function loadConfig(): ScheduleConfig {
 /** Reload config from disk (useful after edits). */
 export function reloadConfig(): void {
   config = null;
-  schoolCalConfig = null;
+  schoolCalConfigs = undefined;
   loadConfig();
 }
 
@@ -212,19 +213,20 @@ export function reloadConfig(): void {
 // SCHOOL CALENDAR LOADER
 // ============================================================
 
-let schoolCalConfig: SchoolCalendarConfig | null | undefined = undefined; // undefined = not loaded, null = not found
+let schoolCalConfigs: SchoolCalendarConfig[] | undefined = undefined;
 
-function loadSchoolCalendar(): SchoolCalendarConfig | null {
-  if (schoolCalConfig !== undefined) return schoolCalConfig;
+function loadSchoolCalendars(): SchoolCalendarConfig[] {
+  if (schoolCalConfigs !== undefined) return schoolCalConfigs;
 
-  const calPath = join(PROJECT_ROOT, "config", "school-calendar.json");
-  if (!existsSync(calPath)) {
-    schoolCalConfig = null;
-    return null;
-  }
+  const configDir = join(PROJECT_ROOT, "config");
+  const files = readdirSync(configDir).filter(
+    (f) => f.includes("school-calendar") && f.endsWith(".json") && !f.includes(".example.")
+  );
 
-  schoolCalConfig = JSON.parse(readFileSync(calPath, "utf-8")) as SchoolCalendarConfig;
-  return schoolCalConfig;
+  schoolCalConfigs = files.map((f) =>
+    JSON.parse(readFileSync(join(configDir, f), "utf-8")) as SchoolCalendarConfig
+  );
+  return schoolCalConfigs;
 }
 
 // ============================================================
@@ -268,15 +270,9 @@ function getEventsForDate(
 // ============================================================
 
 /**
- * Get school schedule info for a given date.
- * Priority: outside school year → weekend → no_school event → early_release event → Friday early out → regular day
+ * Get school schedule info for a single calendar on a given date.
  */
-export function getSchoolSchedule(date?: Date): SchoolDayInfo | null {
-  const cal = loadSchoolCalendar();
-  if (!cal) return null;
-
-  const d = startOfDay(date || new Date());
-
+function getSchoolScheduleForCalendar(d: Date, cal: SchoolCalendarConfig): SchoolDayInfo {
   const base = { child: cal.school.child, schoolName: cal.school.shortName };
 
   // Outside school year
@@ -335,40 +331,53 @@ export function getSchoolSchedule(date?: Date): SchoolDayInfo | null {
 }
 
 /**
- * Get upcoming school events within N days.
+ * Get school schedule info for all children on a given date.
+ * Returns one SchoolDayInfo per child, or empty array if no calendars.
+ */
+export function getSchoolSchedule(date?: Date): SchoolDayInfo[] {
+  const calendars = loadSchoolCalendars();
+  if (calendars.length === 0) return [];
+
+  const d = startOfDay(date || new Date());
+  return calendars.map((cal) => getSchoolScheduleForCalendar(d, cal));
+}
+
+/**
+ * Get upcoming school events within N days, aggregated across all children.
  */
 export function getUpcomingSchoolEvents(date?: Date, daysAhead: number = 14): SchoolEvent[] {
-  const cal = loadSchoolCalendar();
-  if (!cal) return [];
+  const calendars = loadSchoolCalendars();
+  if (calendars.length === 0) return [];
 
   const d = startOfDay(date || new Date());
   const results: SchoolEvent[] = [];
-  const seen = new Set<string>(); // dedupe by name+date
+  const seen = new Set<string>(); // dedupe by child+name+date
 
-  for (const event of cal.events) {
-    const eventDate = parseLocalDate(event.date);
-    const eventEnd = event.endDate ? parseLocalDate(event.endDate) : undefined;
+  for (const cal of calendars) {
+    for (const event of cal.events) {
+      const eventDate = parseLocalDate(event.date);
+      const eventEnd = event.endDate ? parseLocalDate(event.endDate) : undefined;
 
-    // Use the start date for "days until" calculation
-    const daysUntil = diffDays(eventDate, d);
+      const daysUntil = diffDays(eventDate, d);
 
-    // Include events that start within the window, or are currently ongoing
-    const startsInWindow = daysUntil >= 0 && daysUntil <= daysAhead;
-    const isOngoing = eventEnd && diffDays(d, eventDate) >= 0 && diffDays(eventEnd, d) >= 0;
+      const startsInWindow = daysUntil >= 0 && daysUntil <= daysAhead;
+      const isOngoing = eventEnd && diffDays(d, eventDate) >= 0 && diffDays(eventEnd, d) >= 0;
 
-    if (!startsInWindow && !isOngoing) continue;
+      if (!startsInWindow && !isOngoing) continue;
 
-    const key = `${event.name}:${event.date}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+      const key = `${cal.school.child}:${event.name}:${event.date}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
 
-    results.push({
-      name: event.name,
-      date: eventDate,
-      endDate: eventEnd,
-      type: event.type,
-      daysUntil: Math.max(0, daysUntil),
-    });
+      results.push({
+        name: event.name,
+        date: eventDate,
+        endDate: eventEnd,
+        type: event.type,
+        daysUntil: Math.max(0, daysUntil),
+        child: cal.school.child,
+      });
+    }
   }
 
   results.sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -376,52 +385,54 @@ export function getUpcomingSchoolEvents(date?: Date, daysAhead: number = 14): Sc
 }
 
 /**
- * Convenience: is the given date a school day?
+ * Convenience: is the given date a school day for any child?
  */
 export function isSchoolDay(date?: Date): boolean {
-  const info = getSchoolSchedule(date);
-  if (!info) return false;
-  return info.type === "regular" || info.type === "early_release";
+  const infos = getSchoolSchedule(date);
+  return infos.some((info) => info.type === "regular" || info.type === "early_release");
 }
 
 /**
- * Build school context string for prompt injection.
+ * Build school context string for prompt injection (all children).
  */
 function getSchoolContext(date: Date): string {
-  const info = getSchoolSchedule(date);
-  if (!info) return "";
+  const infos = getSchoolSchedule(date);
+  if (infos.length === 0) return "";
 
   const parts: string[] = [];
-  const child = info.child || "Child";
-  const school = info.schoolName || "school";
 
-  switch (info.type) {
-    case "regular":
-      parts.push(`SCHOOL TODAY: ${child} has school at ${school} (${formatTime(info.startTime!)}\u2013${formatTime(info.endTime!)}).`);
-      break;
-    case "early_release":
-      parts.push(
-        `SCHOOL TODAY: ${child} has early release at ${school} (${formatTime(info.startTime!)}\u2013${formatTime(info.endTime!)})${info.eventName ? ` \u2014 ${info.eventName}` : ""}.`
-      );
-      break;
-    case "no_school":
-      parts.push(
-        `SCHOOL TODAY: No school for ${child}${info.eventName ? ` \u2014 ${info.eventName}` : ""}.`
-      );
-      break;
-    case "not_in_session":
-      // Don't add noise if school isn't in session (summer, weekends)
-      break;
+  for (const info of infos) {
+    const child = info.child || "Child";
+    const school = info.schoolName || "school";
+
+    switch (info.type) {
+      case "regular":
+        parts.push(`SCHOOL TODAY: ${child} has school at ${school} (${formatTime(info.startTime!)}\u2013${formatTime(info.endTime!)}).`);
+        break;
+      case "early_release":
+        parts.push(
+          `SCHOOL TODAY: ${child} has early release at ${school} (${formatTime(info.startTime!)}\u2013${formatTime(info.endTime!)})${info.eventName ? ` \u2014 ${info.eventName}` : ""}.`
+        );
+        break;
+      case "no_school":
+        parts.push(
+          `SCHOOL TODAY: No school for ${child}${info.eventName ? ` \u2014 ${info.eventName}` : ""}.`
+        );
+        break;
+      case "not_in_session":
+        // Don't add noise if school isn't in session (summer, weekends)
+        break;
+    }
   }
 
   const upcoming = getUpcomingSchoolEvents(date, 14);
-  // Filter out milestones and events happening today (already covered above)
   const future = upcoming.filter((e) => e.daysUntil > 0 && e.type !== "milestone");
   if (future.length > 0) {
     const lines = future.map((e) => {
       const when = e.daysUntil === 1 ? "tomorrow" : `in ${e.daysUntil} days`;
       const dayLabel = formatDate(e.date);
-      return `- ${e.name} ${when} (${dayLabel})`;
+      const childLabel = e.child ? `${e.child}: ` : "";
+      return `- ${childLabel}${e.name} ${when} (${dayLabel})`;
     });
     parts.push("UPCOMING SCHOOL EVENTS:\n" + lines.join("\n"));
   }
@@ -711,26 +722,28 @@ if (import.meta.main) {
     }
 
     // School calendar info
-    const schoolInfo = getSchoolSchedule(now);
-    if (schoolInfo) {
+    const schoolInfos = getSchoolSchedule(now);
+    if (schoolInfos.length > 0) {
       console.log(`\n${bold("  School (today):")}`);
-      const child = schoolInfo.child || "Child";
-      const school = schoolInfo.schoolName || "school";
-      switch (schoolInfo.type) {
-        case "regular":
-          console.log(`  ${green(`${child} has school at ${school}`)} (${formatTime(schoolInfo.startTime!)}–${formatTime(schoolInfo.endTime!)})`);
-          break;
-        case "early_release":
-          console.log(`  ${yellow(`${child} has early release at ${school}`)} (${formatTime(schoolInfo.startTime!)}–${formatTime(schoolInfo.endTime!)}) — ${schoolInfo.eventName}`);
-          break;
-        case "no_school":
-          console.log(`  ${yellow(`No school for ${child}`)} — ${schoolInfo.eventName}`);
-          break;
-        case "not_in_session":
-          console.log(`  ${dim("School not in session")}`);
-          break;
+      for (const schoolInfo of schoolInfos) {
+        const child = schoolInfo.child || "Child";
+        const school = schoolInfo.schoolName || "school";
+        switch (schoolInfo.type) {
+          case "regular":
+            console.log(`  ${green(`${child} has school at ${school}`)} (${formatTime(schoolInfo.startTime!)}–${formatTime(schoolInfo.endTime!)})`);
+            break;
+          case "early_release":
+            console.log(`  ${yellow(`${child} has early release at ${school}`)} (${formatTime(schoolInfo.startTime!)}–${formatTime(schoolInfo.endTime!)}) — ${schoolInfo.eventName}`);
+            break;
+          case "no_school":
+            console.log(`  ${yellow(`No school for ${child}`)} — ${schoolInfo.eventName}`);
+            break;
+          case "not_in_session":
+            console.log(`  ${dim(`${child}: School not in session`)}`);
+            break;
+        }
+        if (schoolInfo.term) console.log(`  ${dim(schoolInfo.term)}`);
       }
-      if (schoolInfo.term) console.log(`  ${dim(schoolInfo.term)}`);
 
       const upcoming = getUpcomingSchoolEvents(now, 30);
       const future = upcoming.filter((e) => e.daysUntil > 0 && e.type !== "milestone");
@@ -739,7 +752,8 @@ if (import.meta.main) {
         for (const e of future) {
           const when = e.daysUntil === 1 ? "tomorrow" : `in ${e.daysUntil} days`;
           const typeLabel = e.type === "no_school" ? yellow("no school") : yellow("early release");
-          console.log(`  ${e.name}: ${formatDate(e.date)} (${when}) — ${typeLabel}`);
+          const childLabel = e.child ? `${e.child}: ` : "";
+          console.log(`  ${childLabel}${e.name}: ${formatDate(e.date)} (${when}) — ${typeLabel}`);
         }
       }
     }

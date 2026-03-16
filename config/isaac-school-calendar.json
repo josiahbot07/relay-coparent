@@ -1,0 +1,34 @@
+{
+  "school": {
+    "name": "Neighborhood House",
+    "shortName": "NH",
+    "year": "2025-2026",
+    "child": "Isaac"
+  },
+  "schedule": {
+    "regularStart": "07:30",
+    "regularEnd": "17:00",
+    "earlyOutStart": "07:30",
+    "earlyOutEnd": "17:00",
+    "earlyOutDays": []
+  },
+  "terms": [
+    { "name": "Year-Round", "start": "2025-08-18", "end": "2026-08-14" }
+  ],
+  "events": [
+    { "date": "2025-11-27", "endDate": "2025-11-28", "type": "no_school", "name": "Fall Recess" },
+    { "date": "2025-12-25", "endDate": "2025-12-26", "type": "no_school", "name": "Winter Break" },
+    { "date": "2026-01-01", "type": "no_school", "name": "New Year's Day" },
+    { "date": "2026-01-19", "type": "no_school", "name": "MLK Day" },
+    { "date": "2026-01-30", "type": "no_school", "name": "Early Education Professional Development" },
+    { "date": "2026-02-16", "type": "no_school", "name": "Presidents' Day" },
+    { "date": "2026-02-27", "type": "no_school", "name": "Professional Development Day" },
+    { "date": "2026-03-27", "type": "no_school", "name": "Early Education Professional Development" },
+    { "date": "2026-05-15", "type": "no_school", "name": "Professional Development Day" },
+    { "date": "2026-05-25", "type": "no_school", "name": "Memorial Day" },
+    { "date": "2026-06-26", "type": "no_school", "name": "Early Education Professional Development" },
+    { "date": "2026-07-03", "type": "no_school", "name": "Independence Day (observed)" },
+    { "date": "2026-07-24", "type": "no_school", "name": "Pioneer Day" },
+    { "date": "2026-08-14", "type": "no_school", "name": "Professional Development Day" }
+  ]
+}

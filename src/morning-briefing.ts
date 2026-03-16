@@ -189,30 +189,36 @@ async function buildBriefing(supabase: SupabaseClient | null): Promise<string> {
 
   // School today
   try {
-    const schoolInfo = getSchoolSchedule(now);
-    if (schoolInfo && schoolInfo.type !== "not_in_session") {
+    const schoolInfos = getSchoolSchedule(now);
+    const schoolLines: string[] = [];
+    for (const schoolInfo of schoolInfos) {
+      if (schoolInfo.type === "not_in_session") continue;
       const child = schoolInfo.child || "Child";
       switch (schoolInfo.type) {
         case "regular":
-          sections.push(`*School:* ${child} — regular day (${formatTime(schoolInfo.startTime!)}\u2013${formatTime(schoolInfo.endTime!)})\n`);
+          schoolLines.push(`${child} \u2014 regular day (${formatTime(schoolInfo.startTime!)}\u2013${formatTime(schoolInfo.endTime!)})`);
           break;
         case "early_release":
-          sections.push(`*School:* ${child} — early release (${formatTime(schoolInfo.startTime!)}\u2013${formatTime(schoolInfo.endTime!)})${schoolInfo.eventName ? ` \u2014 ${schoolInfo.eventName}` : ""}\n`);
+          schoolLines.push(`${child} \u2014 early release (${formatTime(schoolInfo.startTime!)}\u2013${formatTime(schoolInfo.endTime!)})${schoolInfo.eventName ? ` \u2014 ${schoolInfo.eventName}` : ""}`);
           break;
         case "no_school":
-          sections.push(`*School:* No school for ${child}${schoolInfo.eventName ? ` \u2014 ${schoolInfo.eventName}` : ""}\n`);
+          schoolLines.push(`No school for ${child}${schoolInfo.eventName ? ` \u2014 ${schoolInfo.eventName}` : ""}`);
           break;
       }
+    }
+    if (schoolLines.length > 0) {
+      sections.push(`*School:*\n${schoolLines.join("\n")}\n`);
+    }
 
-      const upcoming = getUpcomingSchoolEvents(now, 7);
-      const future = upcoming.filter((e) => e.daysUntil > 0 && e.type !== "milestone");
-      if (future.length > 0) {
-        const lines = future.map((e) => {
-          const when = e.daysUntil === 1 ? "tomorrow" : `in ${e.daysUntil} days`;
-          return `- ${e.name} ${when}`;
-        });
-        sections.push(`*School This Week:*\n${lines.join("\n")}\n`);
-      }
+    const upcoming = getUpcomingSchoolEvents(now, 7);
+    const future = upcoming.filter((e) => e.daysUntil > 0 && e.type !== "milestone");
+    if (future.length > 0) {
+      const lines = future.map((e) => {
+        const when = e.daysUntil === 1 ? "tomorrow" : `in ${e.daysUntil} days`;
+        const childLabel = e.child ? `${e.child}: ` : "";
+        return `- ${childLabel}${e.name} ${when}`;
+      });
+      sections.push(`*School This Week:*\n${lines.join("\n")}\n`);
     }
   } catch {
     // No school calendar configured

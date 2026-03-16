@@ -19,7 +19,7 @@
     "compact": "bun run scripts/compact-exchanges.ts",
     "stop": "launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.claude.coparent-relay.plist",
     "start:service": "launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.claude.coparent-relay.plist",
-    "restart": "bun run stop; bun run start:service"
+    "restart": "bash scripts/restart-daemon.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
